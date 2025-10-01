@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Графики измерений наушников — пример</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Plotly (одна библиотека для 2D и 3D) -->
+    <script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body>
+<header class="page-header">
+    <h1>Пример графиков измерений наушников</h1>
+    <p class="subtitle">2D: АЧХ/Импеданс/Искажения • 3D: CSD</p>
+</header>
+
+<main class="content">
+    <section>
+        <h2>Выбор набора данных</h2>
+        <div class="controls">
+            <button id="btn-load-demo">Загрузить демо-данные</button>
+            <!-- Для реальных данных можно сделать input file или URL -->
+            <!-- <input type="file" id="file-input" accept="application/json" /> -->
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-left:8px;">
+                <input type="checkbox" id="chk-zoom" />
+                Разрешить зум
+            </label>
+            <button id="btn-gen-heavy" style="margin-left:8px;">Стресс‑тест CSD (~1М точек)</button>
+
+        </div>
+
+        <div id="dataset-info" class="dataset-info"></div>
+    </section>
+
+    <section>
+        <h2>2D графики</h2>
+        <div class="plot-wrap">
+            <div class="plot-title">АЧХ (логарифмическая шкала частоты)</div>
+            <div id="plot-fr" class="plot"></div>
+        </div>
+        <div class="plot-wrap">
+            <div class="plot-title">Импеданс (логарифмическая шкала частоты)</div>
+            <div id="plot-impedance" class="plot"></div>
+        </div>
+        <div class="plot-wrap">
+            <div class="plot-title">Искажения (THD)</div>
+            <div id="plot-distortion" class="plot"></div>
+        </div>
+    </section>
+
+    <section>
+        <h2>3D график CSD (Waterfall)</h2>
+        <div class="plot-wrap">
+            <div class="plot-title">Cumulative Spectral Decay</div>
+            <div id="plot-csd" class="plot plot-3d"></div>
+            <div id="csd-hover-panel" class="hover-panel" hidden></div>
+        </div>
+        <p class="hint">
+            Наведите курсор на поверхность — справа появится таблица амплитуд по времени при ближайшей частоте.
+        </p>
+
+        <div class="plot-wrap">
+            <div class="plot-title">Наложение нескольких кривых (с заливкой и без)</div>
+            <div id="plot-overlay" class="plot"></div>
+        </div>
+
+    </section>
+</main>
+
+<footer class="page-footer">
+    <small>Библиотека: Plotly. Этот пример можно легко вставить в любую PHP страницу.</small>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>

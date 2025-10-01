@@ -1,0 +1,537 @@
+// Простой скелет с разметкой данных и двумя примерами (2D/3D).
+// Можно подключить реальные данные, заменив loadDemoData() на fetch('data/your.json').then(r => r.json()).
+
+(function () {
+    const state = {
+        data: null,
+        // элементы
+        infoEl: document.getElementById('dataset-info'),
+        frEl: document.getElementById('plot-fr'),
+        impedanceEl: document.getElementById('plot-impedance'),
+        distortionEl: document.getElementById('plot-distortion'),
+        csdEl: document.getElementById('plot-csd'),
+        csdHoverPanel: document.getElementById('csd-hover-panel'),
+        zoomEnabled: false
+
+    };
+
+    document.getElementById('btn-load-demo').addEventListener('click', async () => {
+        const data = await loadDemoData();
+        state.data = normalizeData(data);
+        renderAll(state);
+    });
+
+    // Можно добавить чтение локального файла:
+    // document.getElementById('file-input').addEventListener('change', handleFileSelect);
+
+    // Автозагрузка демо при открытии страницы:
+    loadDemoData().then(d => {
+        state.data = normalizeData(d);
+        renderAll(state);
+    });
+
+    // Переключатель зума
+    const zoomChk = document.getElementById('chk-zoom');
+    if (zoomChk) {
+        zoomChk.checked = state.zoomEnabled;
+        zoomChk.addEventListener('change', () => {
+            state.zoomEnabled = zoomChk.checked;
+            renderAll(state); // простой путь: перерисовать все
+        });
+    }
+
+    // Кнопка генерации стресс-набора для CSD (~1М точек)
+    const btnHeavy = document.getElementById('btn-gen-heavy');
+    if (btnHeavy) {
+        btnHeavy.addEventListener('click', () => {
+            // 1000 x 1000 ≈ 1,000,000 узлов поверхности
+            const heavy = generateStressCSD(1000, 1000);
+            state.data = normalizeData(heavy);
+            renderAll(state);
+        });
+    }
+
+
+    // ============= ДАННЫЕ ==============
+
+    async function loadDemoData() {
+        try {
+            const res = {
+                "model": "Demo Headphone X100",
+                "frequencies": [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000],
+                "fr": [-10, -8, -6, -4, -3, -2, -1, 0, 1, 1, 2, 2, 3, 4, 3, 2, 1, 0, -1, -1, 0, 1, 3, 5, 6, 5, 3, 1, 0, -2, -4],
+                "impedance": [16, 16, 17, 18, 18, 19, 20, 20, 22, 24, 26, 28, 32, 35, 38, 42, 46, 50, 54, 58, 62, 65, 70, 75, 78, 80, 82, 84, 86, 88, 90],
+                "distortion": {
+                    "name": "THD",
+                    "unit": "%",
+                    "values": [1.5, 1.2, 1.0, 0.9, 0.8, 0.7, 0.6, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.32, 0.3, 0.28, 0.27, 0.27, 0.28, 0.3, 0.35, 0.45, 0.55, 0.6, 0.65, 0.7, 0.85, 1.0, 1.3, 1.8]
+                },
+                "csd": {
+                    "times": [1, 2, 3, 4, 5],
+                    "amplitudes": [
+                        [-5, -4, -3, -2, -1, 0, 1, 2, 2, 3, 3, 2, 1, 0, -1, -1, -2, -3, -4, -5, -3, -1, 1, 3, 4, 3, 2, 1, 0, -2, -4],
+                        [-10, -9, -8, -7, -6, -6, -5, -4, -4, -3, -3, -3, -4, -5, -5, -6, -6, -7, -8, -9, -8, -6, -4, -2, -1, -2, -3, -4, -5, -6, -8],
+                        [-20, -19, -18, -17, -16, -16, -15, -14, -13, -12, -12, -12, -13, -14, -15, -16, -17, -18, -19, -20, -18, -16, -14, -12, -11, -12, -13, -14, -15, -16, -18],
+                        [-35, -34, -33, -32, -31, -31, -30, -29, -29, -28, -28, -28, -29, -30, -31, -32, -33, -34, -35, -36, -35, -33, -31, -29, -28, -29, -30, -31, -32, -33, -35],
+                        [-60, -59, -58, -57, -56, -56, -55, -54, -54, -53, -53, -53, -54, -55, -56, -57, -58, -59, -60, -61, -60, -58, -56, -54, -53, -54, -55, -56, -57, -58, -60]
+                    ]
+                }
+            }
+
+            // await fetch('data/measurement_set.json', { cache: 'no-cache' });
+            // if (!res.ok) throw new Error('Не удалось загрузить measurement_set.json');
+            // return await res.json();
+            return res //.json()
+        } catch (e) {
+            console.warn('Фолбэк на встроенные демо-данные', e);
+            return generateFallbackData();
+        }
+    }
+
+    function generateFallbackData() {
+        // Фолбэк — синтетические данные на случай, если файл недоступен.
+        const freqs = logspace(20, 20000, 120);
+        const fr = freqs.map(f => -2 + 4 * Math.exp(-Math.pow(Math.log10(f / 2000), 2) / (2 * Math.pow(0.3, 2))));
+        const impedance = freqs.map((f, i) => 24 + 36 * (i / (freqs.length - 1)));
+        const distortion = freqs.map((f, i) => 0.8 + 0.7 * Math.abs(Math.sin(i / 10)));
+
+        const times = [1, 2, 3, 4, 5];
+        const amplitudes = times.map((t, ti) =>
+            freqs.map((f, i) => {
+                const ridge = -5 - 10 * ti + 3 * Math.exp(-Math.pow(Math.log10(f / 3500), 2) / (2 * Math.pow(0.2, 2)));
+                return ridge - ti * 5 - (i % 17 === 0 ? 2 : 0);
+            })
+        );
+
+        return {
+            model: "Synthetic Demo",
+            frequencies: freqs,
+            fr,
+            impedance,
+            distortion: {name: "THD", unit: "%", values: distortion},
+            csd: {times, amplitudes}
+        };
+    }
+
+    // Генератор стресс-набора: surface размером rows x cols (~rows*cols значений)
+    function generateStressCSD(rows = 1000, cols = 1000) {
+        const freqs = logspace(20, 20000, cols);
+        const times = Array.from({length: rows}, (_, i) => i + 1); // мс
+
+        // Генерим Z с рельефом, избегая NaN/Infinity
+        const amplitudes = new Array(rows);
+        for (let r = 0; r < rows; r++) {
+            const row = new Array(cols);
+            const t = r / rows;
+            for (let c = 0; c < cols; c++) {
+                const x = c / cols;
+                // базовая волна + "хребет" по частоте, убывание по времени
+                const ridge = Math.exp(-Math.pow((x - 0.45) / 0.12, 2)) * 12;
+                const wave = (Math.sin(15 * x + t * 6) + Math.cos(9 * x - t * 4)) * 1.5;
+                const decay = -r * (30 / rows);
+                row[c] = (ridge + wave + decay) | 0; // целое, около -30..+12 дБ
+            }
+            amplitudes[r] = row;
+        }
+
+        // Лёгкие 2D ряды, чтобы не грузить лишнее (оставим короткими)
+        const fr = freqs.slice(0, 200).map((f, i) => -2 + 3 * Math.sin(i / 12));
+        const imp = freqs.slice(0, 200).map((_, i) => 24 + i * 0.2);
+        const dist = freqs.slice(0, 200).map((_, i) => 0.5 + 0.4 * Math.abs(Math.sin(i / 8)));
+
+        return {
+            model: `Stress CSD ${rows}x${cols} (~${Math.round((rows * cols) / 1e6)}M pts)`,
+            frequencies: freqs,            // используем для оси X CSD
+            fr,                            // короткие, чтобы 2D были быстрыми
+            impedance: imp,
+            distortion: {name: 'THD', unit: '%', values: dist},
+            csd: {times, amplitudes}
+        };
+    }
+
+
+    function normalizeData(d) {
+        // Приведение типов/длин массивов к общему знаменателю (минимум защит)
+        const L = Math.min(
+            d.frequencies?.length || 0,
+            d.fr?.length || Infinity,
+            d.impedance?.length || Infinity,
+            d.distortion?.values?.length || Infinity
+        );
+        const frequencies = (d.frequencies || []).slice(0, L);
+        return {
+            model: d.model || 'Unknown',
+            frequencies,
+            fr: (d.fr || []).slice(0, L),
+            impedance: (d.impedance || []).slice(0, L),
+            distortion: {
+                name: d.distortion?.name || 'Distortion',
+                unit: d.distortion?.unit || 'dB',
+                values: (d.distortion?.values || []).slice(0, L)
+            },
+            csd: {
+                times: d.csd?.times || [],
+                amplitudes: d.csd?.amplitudes || [] // [time][freq]
+            }
+        };
+    }
+
+    // ============= ОТРИСОВКА ==============
+
+    function renderAll(state) {
+        const {data} = state;
+        renderInfo(data);
+        renderFR2D(state);
+        renderImpedance2D(state);
+        renderDistortion2D(state);
+        renderCSD3D(state);
+        renderOverlay2D(state);
+
+    }
+
+
+    function getPlotConfig() {
+        return {
+            displayModeBar: true,
+            responsive: true,
+            plotGlPixelRatio: 1,
+            scrollZoom: state.zoomEnabled,     // колесо мыши
+            doubleClick: state.zoomEnabled ? 'reset' : false // сброс масштаба по даблклику
+        };
+    }
+
+
+    function renderInfo(data) {
+        state.infoEl.innerHTML = `
+      <div><b>Модель:</b> ${escapeHtml(data.model)}</div>
+      <div><b>Точек частоты:</b> ${data.frequencies.length}</div>
+      <div><b>Временных слоев CSD:</b> ${data.csd.times.length}</div>
+    `;
+    }
+
+
+    function renderFR2D(state) {
+        const {frequencies, fr} = state.data;
+        const trace = {
+            x: frequencies,
+            y: fr,
+            type: 'scattergl',
+            mode: 'lines',
+            name: 'FR',
+            line: {color: '#60a5fa', width: 2}
+        };
+        const layout = base2DLayout('Частота, Гц (лог)', 'Уровень, дБ', true);
+        Plotly.newPlot(
+            state.frEl,
+            [trace],
+            layout,
+            getPlotConfig()
+        );
+    }
+
+
+    function renderImpedance2D(state) {
+        const {frequencies, impedance} = state.data;
+        const trace = {
+            x: frequencies,
+            y: impedance,
+            type: 'scattergl',
+            mode: 'lines',
+            name: 'Impedance',
+            line: {color: '#34d399', width: 2}
+        };
+        const layout = base2DLayout('Частота, Гц (лог)', 'Импеданс, Ом', true);
+        Plotly.newPlot(state.impedanceEl, [trace], layout, getPlotConfig());
+    }
+
+
+    function renderDistortion2D(state) {
+        const {frequencies, distortion} = state.data;
+        const trace = {
+            x: frequencies,
+            y: distortion.values,
+            type: 'scattergl',
+            mode: 'lines',
+            name: distortion.name || 'Distortion',
+            line: {color: '#f59e0b', width: 2}
+        };
+        const yTitle = `Искажения (${distortion.unit || ''})`;
+        // Для искажений иногда удобна лог Y-шкала — можно по желанию:
+        const layout = base2DLayout('Частота, Гц (лог)', yTitle, true /* logX */);
+        Plotly.newPlot(state.distortionEl, [trace], layout, getPlotConfig());
+    }
+
+
+    function base2DLayout(xTitle, yTitle, logX = false) {
+        return {
+            paper_bgcolor: '#0f172a',
+            plot_bgcolor: '#0f172a',
+            font: {color: '#e5e7eb'},
+            margin: {l: 50, r: 20, t: 10, b: 40},
+
+            hovermode: 'x unified',           // единый и предсказуемый тултип по X
+            hoverdistance: 30,                 // расширяем зону “захвата”
+            spikedistance: 30,                 // и для спайков
+
+            dragmode: state.zoomEnabled ? 'zoom' : false,
+
+            xaxis: {
+                title: xTitle,
+                type: logX ? 'log' : 'linear',
+                gridcolor: '#1f2937',
+                zerolinecolor: '#1f2937',
+
+                showspikes: true,              // вертикальный курсор
+                spikemode: 'across',           // спайк через весь график
+                spikesnap: 'cursor',
+                spikecolor: '#94a3b8',
+                spikethickness: 1
+
+            },
+            yaxis: {
+                title: yTitle,
+                gridcolor: '#1f2937',
+                zerolinecolor: '#1f2937',
+                // showspikes: false
+                spikemode: 'across',           // спайк через весь график
+                spikesnap: 'cursor',
+                spikecolor: '#94a3b8',
+                spikethickness: 1
+
+            },
+            showlegend: true
+        };
+    }
+
+
+    function renderCSD3D(state) {
+        const {frequencies, csd} = state.data;
+        const times = csd.times;
+        const Z = csd.amplitudes; // [time][freq] в дБ
+
+        if (!times.length || !Z.length) {
+            Plotly.purge(state.csdEl);
+            state.csdEl.innerHTML = '<div style="color:#9ca3af">Нет данных CSD</div>';
+            return;
+        }
+
+        const surface = {
+            x: frequencies,
+            y: times,
+            z: Z,
+            type: 'surface',
+            colorscale: 'Viridis',
+            contours: {z: {show: true, usecolormap: true, highlightcolor: '#fff', project: {z: true}}}, // проекция смотрится неплохо
+            showscale: true,
+            hovertemplate: 'f=%{x:.0f} Гц<br>t=%{y:.0f} мс<br>А=%{z:.1f} дБ<extra></extra>'
+        };
+
+        const layout = {
+            paper_bgcolor: '#0f172a',
+            font: {color: '#e5e7eb'},
+            margin: {l: 0, r: 0, t: 0, b: 0},
+            scene: {
+                xaxis: {title: 'Частота, Гц', type: 'log', gridcolor: '#1f2937', backgroundcolor: '#0b1224'},
+                yaxis: {title: 'Время, мс', gridcolor: '#1f2937', backgroundcolor: '#0b1224'},
+                zaxis: {title: 'Амплитуда, дБ', gridcolor: '#1f2937', backgroundcolor: '#0b1224'},
+                camera: {eye: {x: 1.6, y: 1.2, z: 0.9}}
+            }
+        };
+
+        Plotly.newPlot(state.csdEl, [surface], layout, {
+            displayModeBar: false,
+            responsive: true, /*scrollZoom: false,*/
+            doubleClick: false
+        })
+            .then(() => {
+                // Наведение: таблица амплитуд по времени при ближайшей частоте
+                state.csdEl.on('plotly_hover', ev => {
+                    const pt = ev?.points?.[0];
+                    if (!pt) return hideHoverPanel();
+                    const freq = pt.x; // в Гц
+                    showTimeSlicePanel(freq, frequencies, times, Z, state.csdHoverPanel);
+                });
+                state.csdEl.on('plotly_unhover', () => hideHoverPanel());
+            });
+    }
+
+
+    function renderOverlay2D(state) {
+        const {frequencies, fr} = state.data;
+        if (!frequencies?.length) {
+            Plotly.purge(state.overlayEl);
+            return;
+        }
+
+        // Базовая кривая (можно взять имеющуюся FR, чтобы было “похоже на правду”)
+        const base = fr?.length === frequencies.length
+            ? fr
+            : frequencies.map((_, i) => -2 + 3 * Math.sin(i / 18));
+
+        // Вариации для демонстрации
+        const yA = base.map(y => y);             // Кривая A (с заливкой к нулю)
+        const yB = base.map((y, i) => y - 3 + 1.5 * Math.cos(i / 22)); // Кривая B (заливка к предыдущей)
+        const yC = base.map((y, i) => y + 4 - 2 * Math.exp(-Math.pow((i - base.length * 0.6) / (base.length * 0.12), 2))); // Кривая C без заливки
+        const yD = base.map((y, i) => y + 9 + 3 * Math.cos(i/22))
+        const yE = base.map((y, i) => y + 16 + 3 * Math.cos(i/22))
+        const yF = base.map((y, i) => y + 25 + 3 * Math.cos(i/22))
+
+        const traceA = {
+            x: frequencies,
+            y: yA,
+            type: 'scattergl',
+            mode: 'lines',
+            name: 'Кривая A (заливка к нулю)',
+            line: {color: '#60a5fa', width: 2},
+            fill: 'tozeroy',
+            fillcolor: 'rgba(96,165,250,0.20)'
+        };
+        const traceB = {
+            x: frequencies,
+            y: yB,
+            type: 'scattergl',
+            mode: 'lines',
+            name: 'Кривая B (заливка к A)',
+            line: {color: '#34d399', width: 2},
+            fill: 'tonexty',
+            fillcolor: 'rgba(52,211,153,0.20)'
+        };
+        const traceC = {
+            x: frequencies,
+            y: yC,
+            type: 'scattergl',
+            mode: 'lines',
+            name: 'Кривая C (без заливки), черточкой',
+            line: {
+                color: '#f59e0b',
+                width: 2,
+                dash: 'dash'         // 'solid' | 'dot' | 'dash' | 'longdash' | 'dashdot' | 'longdashdot'
+
+            }
+        };
+
+        const traceTicks = {
+            x: frequencies,
+            y: yD,
+            type: 'scattergl',     // можно и 'scatter'
+            mode: 'markers',
+            marker: {
+                symbol: 'line-ns-open', // вертикальная черточка
+                size: 16,               // длина черточки
+                color: '#34d399',
+                line: { width: 2 }
+            },
+            name: 'Черточки'
+        };
+        const traceLineWithTicks = {
+            x: frequencies,
+            y: yE,
+            type: 'scattergl',
+            mode: 'lines+markers',
+            line: { color: '#60a5fa', width: 2 },
+            marker: { symbol: 'line-ns-open', size: 14, color: '#60a5fa' },
+            name: 'Линия + черточки'
+        };
+        const traceStep = {
+            x: frequencies,
+            y: yF,
+            type: 'scatter',   // для гарантии возьмем SVG
+            mode: 'lines',
+            line: { shape: 'hv', width: 2 }, // 'hv' | 'vh' | 'hvh' | 'vhv'
+            name: 'Ступеньки'
+        };
+
+
+        const layout = base2DLayout('Частота, Гц (лог)', 'Уровень, дБ', true);
+        layout.showlegend = true;
+
+        Plotly.newPlot(
+            document.getElementById('plot-overlay'),
+            [traceA, traceB, traceC, traceTicks, traceLineWithTicks, traceStep],
+            layout,
+            getPlotConfig()
+        );
+    }
+
+
+    // ============= ВСПОМОГАТЕЛЬНЫЕ ==============
+
+    function showTimeSlicePanel(freq, freqs, times, Z, panelEl) {
+        const idx = nearestIndex(freqs, freq);
+        const rows = times.map((t, ti) => {
+            const amp = Z?.[ti]?.[idx];
+            return `<tr><td>${t} мс</td><td>${formatDb(amp)}</td></tr>`;
+        }).join('');
+
+        panelEl.innerHTML = `
+      <div style="margin-bottom:6px;color:#9ca3af;">Частота: <b>${Math.round(freq)} Гц</b></div>
+      <table>
+        <thead><tr><th>Время</th><th>Ампл.</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+        panelEl.hidden = false;
+    }
+
+    function hideHoverPanel() {
+        state.csdHoverPanel.hidden = true;
+    }
+
+    function nearestIndex(arr, x) {
+        if (!arr?.length) return 0;
+        // для лог-шкалы — расстояние в лог-пространстве
+        const lx = Math.log(x);
+        let bestIdx = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < arr.length; i++) {
+            const d = Math.abs(Math.log(arr[i]) - lx);
+            if (d < bestD) {
+                bestD = d;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
+
+    function logspace(fmin, fmax, n) {
+        const lmin = Math.log10(fmin);
+        const lmax = Math.log10(fmax);
+        const out = [];
+        for (let i = 0; i < n; i++) {
+            out.push(Math.pow(10, lmin + (lmax - lmin) * i / (n - 1)));
+        }
+        return out;
+    }
+
+    function formatDb(x) {
+        if (x == null || Number.isNaN(x)) return '—';
+        return `${x.toFixed(1)} дБ`;
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, m => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[m]));
+    }
+
+    // function handleFileSelect(ev) {
+    //   const file = ev.target.files?.[0];
+    //   if (!file) return;
+    //   const reader = new FileReader();
+    //   reader.onload = () => {
+    //     try {
+//        const json = JSON.parse(reader.result);
+//        state.data = normalizeData(json);
+//        renderAll(state);
+//      } catch (e) {
+//        alert('Ошибка парсинга JSON: ' + e.message);
+//      }
+//    };
+//    reader.readAsText(file, 'utf-8');
+//  }
+
+})();
